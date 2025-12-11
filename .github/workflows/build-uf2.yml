@@ -47,14 +47,24 @@ jobs:
         mkdir -p build
         cd build
         echo "=== Configuring CMake ==="
-        cmake .. -DPICO_SDK_PATH="${{ env.PICO_SDK_PATH }}" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON
+        echo "PICO_SDK_PATH is: $PICO_SDK_PATH"
+        ls -la "$PICO_SDK_PATH" || echo "PICO_SDK_PATH not accessible!"
+        cmake .. \
+          -DPICO_SDK_PATH="${PICO_SDK_PATH}" \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_VERBOSE_MAKEFILE=ON \
+          -DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE
         echo "=== CMake Configuration Complete ==="
 
     - name: Build
       run: |
         cd build
         echo "=== Starting Build ==="
-        make -j$(nproc) VERBOSE=1
+        make VERBOSE=1 2>&1 || {
+          echo "=== Build Failed - Showing CMakeFiles error messages ==="
+          find CMakeFiles -name "*.log" -exec cat {} \;
+          exit 1
+        }
         echo "=== Build Complete ==="
 
     - name: List build output
