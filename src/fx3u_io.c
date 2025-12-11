@@ -27,8 +27,9 @@
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
 #include "pico/time.h"
+#include <string.h>
 
-static io_manager_t g_io_mgr;
+static io_manager_t *g_io_mgr = NULL;
 
 /* 去抖动计时器 */
 static uint32_t g_input_debounce_time[PICO_TOTAL_INPUTS];
@@ -48,10 +49,8 @@ void io_manager_init(io_manager_t *io_mgr)
 {
     if (!io_mgr) return;
     
-    io_mgr->input_gpio_mask = 0;
-    io_mgr->output_gpio_mask = 0;
-    io_mgr->adc_gpio_mask = 0;
-    io_mgr->initialized = false;
+    memset(io_mgr, 0, sizeof(*io_mgr));
+    g_io_mgr = io_mgr;
     
     /* ===== 初始化数字输入 (X0-X9) ===== */
     uint8_t input_gpios[] = {
@@ -72,7 +71,7 @@ void io_manager_init(io_manager_t *io_mgr)
             gpio_pull_down(gpio);
         }
         
-        io_mgr->input_gpio_mask |= (1 << gpio);
+        g_io_mgr->input_gpio_mask |= (1 << gpio);
         g_input_stable[i] = 0;
         g_input_debounce_time[i] = 0;
     }
@@ -89,20 +88,20 @@ void io_manager_init(io_manager_t *io_mgr)
         gpio_init(gpio);
         gpio_set_dir(gpio, GPIO_OUT);
         gpio_put(gpio, 0);  /* 初始化为低电平 */
-        io_mgr->output_gpio_mask |= (1 << gpio);
+        g_io_mgr->output_gpio_mask |= (1 << gpio);
     }
     
     /* ===== 初始化 RUN LED (GPIO2) ===== */
     gpio_init(PICO_LED_RUN_GPIO);
     gpio_set_dir(PICO_LED_RUN_GPIO, GPIO_OUT);
     gpio_put(PICO_LED_RUN_GPIO, PICO_LED_ACTIVE_HIGH ? 0 : 1);  /* 初始关闭 */
-    io_mgr->led_run_state = false;
+    g_io_mgr->led_run_state = false;
     
     /* ===== 初始化 ERR LED (GPIO3) ===== */
     gpio_init(PICO_LED_ERR_GPIO);
     gpio_set_dir(PICO_LED_ERR_GPIO, GPIO_OUT);
     gpio_put(PICO_LED_ERR_GPIO, PICO_LED_ACTIVE_HIGH ? 0 : 1);  /* 初始关闭 */
-    io_mgr->led_err_state = false;
+    g_io_mgr->led_err_state = false;
     
     /* ===== 初始化 RUN 开关 (GPIO23) ===== */
     gpio_init(PICO_SWITCH_RUN_GPIO);
@@ -112,7 +111,7 @@ void io_manager_init(io_manager_t *io_mgr)
     } else {
         gpio_pull_down(PICO_SWITCH_RUN_GPIO);
     }
-    io_mgr->switch_run_state = false;
+    g_io_mgr->switch_run_state = false;
     
     /* ===== 初始化 UART0 (GPIO0/1) ===== */
     uart_init(PICO_UART0_INSTANCE, PICO_UART_BAUDRATE);
@@ -134,20 +133,20 @@ void io_manager_init(io_manager_t *io_mgr)
     
     /* ADC0 (GPIO26) - AI0 */
     adc_gpio_init(PICO_ADC_AI0_GPIO);
-    io_mgr->adc_gpio_mask |= (1 << PICO_ADC_AI0_GPIO);
+    g_io_mgr->adc_gpio_mask |= (1 << PICO_ADC_AI0_GPIO);
     
     /* ADC1 (GPIO27) - AI1 */
     adc_gpio_init(PICO_ADC_AI1_GPIO);
-    io_mgr->adc_gpio_mask |= (1 << PICO_ADC_AI1_GPIO);
+    g_io_mgr->adc_gpio_mask |= (1 << PICO_ADC_AI1_GPIO);
     
     /* ADC2 (GPIO28) - PVD (掉电检测) */
     adc_gpio_init(PICO_ADC_PVD_GPIO);
-    io_mgr->adc_gpio_mask |= (1 << PICO_ADC_PVD_GPIO);
+    g_io_mgr->adc_gpio_mask |= (1 << PICO_ADC_PVD_GPIO);
     
     /* 设置 ADC 采样速度（可根据需求调整） */
     adc_set_temp_sensor_enabled(false);  /* 禁用内部温度传感器 */
     
-    io_mgr->initialized = true;
+    g_io_mgr->initialized = true;
     
     printf("[IO] I/O 管理器初始化完成\n");
     printf("[IO] 数字输入: %d 路 (X0-X9)\n", PICO_TOTAL_INPUTS);
@@ -182,7 +181,7 @@ bool io_get_gpio_input(uint8_t gpio_num)
  */
 void io_write_output_relay(uint8_t relay_num, uint8_t value)
 {
-    if (relay_num >= PICO_OUTPUT_COUNT) return;
+    if (!g_io_mgr || relay_num >= PICO_OUTPUT_COUNT) return;
     
     uint8_t output_gpios[] = {
         PICO_OUTPUT_Y0_GPIO,  PICO_OUTPUT_Y1_GPIO,  PICO_OUTPUT_Y2_GPIO,
@@ -195,9 +194,9 @@ void io_write_output_relay(uint8_t relay_num, uint8_t value)
     
     /* 更新缓冲 */
     if (value) {
-        g_io_mgr.output_state[relay_num / 8] |= (1 << (relay_num % 8));
+        g_io_mgr->output_state[relay_num / 8] |= (1 << (relay_num % 8));
     } else {
-        g_io_mgr.output_state[relay_num / 8] &= ~(1 << (relay_num % 8));
+        g_io_mgr->output_state[relay_num / 8] &= ~(1 << (relay_num % 8));
     }
 }
 
@@ -226,8 +225,9 @@ uint8_t io_read_input_relay(uint8_t relay_num)
  */
 void io_set_led_run(bool state)
 {
+    if (!g_io_mgr) return;
     gpio_put(PICO_LED_RUN_GPIO, PICO_LED_ACTIVE_HIGH ? state : !state);
-    g_io_mgr.led_run_state = state;
+    g_io_mgr->led_run_state = state;
 }
 
 /**
@@ -235,8 +235,9 @@ void io_set_led_run(bool state)
  */
 void io_set_led_err(bool state)
 {
+    if (!g_io_mgr) return;
     gpio_put(PICO_LED_ERR_GPIO, PICO_LED_ACTIVE_HIGH ? state : !state);
-    g_io_mgr.led_err_state = state;
+    g_io_mgr->led_err_state = state;
 }
 
 /**
@@ -267,6 +268,7 @@ void io_write_output_word(uint16_t value)
  */
 uint16_t io_read_input_word(void)
 {
+    if (!g_io_mgr) return 0;
     uint16_t value = 0;
     for (int i = 0; i < PICO_TOTAL_INPUTS; i++) {
         if (g_input_stable[i]) {  /* 使用去抖后的值 */
@@ -398,7 +400,7 @@ void io_disable_pwm(uint8_t gpio_num)
  */
 void io_manager_update(void)
 {
-    if (!g_io_mgr.initialized) return;
+    if (!g_io_mgr || !g_io_mgr->initialized) return;
     
     uint32_t now = to_ms_since_boot();
     
@@ -430,19 +432,19 @@ void io_manager_update(void)
         
         /* 更新输入缓冲 */
         if (g_input_stable[i]) {
-            g_io_mgr.input_state[i / 8] |= (1 << (i % 8));
+            g_io_mgr->input_state[i / 8] |= (1 << (i % 8));
         } else {
-            g_io_mgr.input_state[i / 8] &= ~(1 << (i % 8));
+            g_io_mgr->input_state[i / 8] &= ~(1 << (i % 8));
         }
     }
     
     /* 采样 ADC 值 */
-    g_io_mgr.adc_values[0] = io_read_adc_ai0();
-    g_io_mgr.adc_values[1] = io_read_adc_ai1();
-    g_io_mgr.adc_values[2] = io_read_adc_pvd();
+    g_io_mgr->adc_values[0] = io_read_adc_ai0();
+    g_io_mgr->adc_values[1] = io_read_adc_ai1();
+    g_io_mgr->adc_values[2] = io_read_adc_pvd();
     
     /* 更新 RUN 开关状态 */
-    g_io_mgr.switch_run_state = gpio_get(PICO_SWITCH_RUN_GPIO);
+    g_io_mgr->switch_run_state = gpio_get(PICO_SWITCH_RUN_GPIO);
 }
 
 /**
@@ -461,11 +463,15 @@ bool io_check_voltage_safe(void)
  */
 void io_diagnostic_report(void)
 {
+    if (!g_io_mgr) {
+        printf("\n===== I/O 诊断报告 =====\n未初始化 I/O 管理器\n========================\n\n");
+        return;
+    }
     printf("\n===== I/O 诊断报告 =====\n");
-    printf("初始化状态: %s\n", g_io_mgr.initialized ? "OK" : "未初始化");
-    printf("RUN LED: %s\n", g_io_mgr.led_run_state ? "ON" : "OFF");
-    printf("ERR LED: %s\n", g_io_mgr.led_err_state ? "ON" : "OFF");
-    printf("RUN 开关: %s\n", g_io_mgr.switch_run_state ? "按下" : "释放");
+    printf("初始化状态: %s\n", g_io_mgr->initialized ? "OK" : "未初始化");
+    printf("RUN LED: %s\n", g_io_mgr->led_run_state ? "ON" : "OFF");
+    printf("ERR LED: %s\n", g_io_mgr->led_err_state ? "ON" : "OFF");
+    printf("RUN 开关: %s\n", g_io_mgr->switch_run_state ? "按下" : "释放");
     
     printf("\n数字输入 (X0-X9):\n");
     for (int i = 0; i < PICO_TOTAL_INPUTS; i++) {
@@ -473,9 +479,9 @@ void io_diagnostic_report(void)
     }
     
     printf("\n模拟输入:\n");
-    printf("  AI0 (PVD 毫伏): %u mV\n", io_adc_to_millivolts(g_io_mgr.adc_values[0]));
-    printf("  AI1 (毫伏): %u mV\n", io_adc_to_millivolts(g_io_mgr.adc_values[1]));
-    printf("  PVD (毫伏): %u mV\n", io_adc_to_millivolts(g_io_mgr.adc_values[2]));
+    printf("  AI0 (PVD 毫伏): %u mV\n", io_adc_to_millivolts(g_io_mgr->adc_values[0]));
+    printf("  AI1 (毫伏): %u mV\n", io_adc_to_millivolts(g_io_mgr->adc_values[1]));
+    printf("  PVD (毫伏): %u mV\n", io_adc_to_millivolts(g_io_mgr->adc_values[2]));
     
     printf("\nRS485 状态:\n");
     printf("  DE (发送): %d\n", gpio_get(PICO_RS485_DE_GPIO));
@@ -489,7 +495,7 @@ void io_diagnostic_report(void)
  */
 void io_manager_shutdown(void)
 {
-    if (!g_io_mgr.initialized) return;
+    if (!g_io_mgr || !g_io_mgr->initialized) return;
     
     /* 关闭所有输出 */
     for (int i = 0; i < PICO_OUTPUT_COUNT; i++) {
@@ -505,5 +511,3 @@ void io_manager_shutdown(void)
     
     printf("[IO] I/O 管理器已关闭\n");
 }
-
-

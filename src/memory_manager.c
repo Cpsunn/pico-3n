@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct {
+    uint32_t size;
+} memory_block_header_t;
+
 static memory_stats_t g_memory_stats = {
     .total_size = 258 * 1024,  /* Pico的RAM大小 */
     .used_size = 0,
@@ -26,15 +30,20 @@ void memory_init(void)
  */
 void* memory_alloc(uint32_t size)
 {
-    if (size > g_memory_stats.free_size) return NULL;
-    
-    void *ptr = malloc(size);
-    if (ptr) {
-        g_memory_stats.used_size += size;
-        g_memory_stats.free_size -= size;
+    if (size == 0 || size > g_memory_stats.free_size) {
+        return NULL;
     }
     
-    return ptr;
+    memory_block_header_t *block = malloc(sizeof(memory_block_header_t) + size);
+    if (!block) {
+        return NULL;
+    }
+    
+    block->size = size;
+    g_memory_stats.used_size += size;
+    g_memory_stats.free_size -= size;
+    
+    return (void *)(block + 1);
 }
 
 /**
@@ -43,7 +52,16 @@ void* memory_alloc(uint32_t size)
 void memory_free(void *ptr)
 {
     if (!ptr) return;
-    free(ptr);
+    
+    memory_block_header_t *block = ((memory_block_header_t *)ptr) - 1;
+    uint32_t size = block->size;
+    
+    if (size <= g_memory_stats.used_size) {
+        g_memory_stats.used_size -= size;
+        g_memory_stats.free_size += size;
+    }
+    
+    free(block);
 }
 
 /**
