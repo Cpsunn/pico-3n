@@ -1,26 +1,26 @@
 cmake_minimum_required(VERSION 3.13)
 
-# Set the project name
-project(pico_fx3u_simulator C CXX ASM)
-
-# Set the C and C++ standards
+# Enforce C11 and C++17 standards
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Include Pico SDK (must be done before project() in some cases, but can also be done here)
+# Ensure PICO_SDK_PATH is set
 if(NOT DEFINED ENV{PICO_SDK_PATH})
-    message(FATAL_ERROR "PICO_SDK_PATH environment variable must be set before running cmake")
+    message(FATAL_ERROR "PICO_SDK_PATH environment variable must be set")
 endif()
 
-message(STATUS "Using PICO_SDK_PATH: $ENV{PICO_SDK_PATH}")
-
-# Import the Pico SDK import file
+# Include the Pico SDK tools
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+
+# Define the project
+project(pico_fx3u_simulator C CXX ASM)
 
 # Initialize the Pico SDK
 pico_sdk_init()
 
-# Add the executable
+# Define the target executable
 add_executable(pico_fx3u_simulator
     src/main.c
     src/fx3u_core.c
@@ -34,27 +34,25 @@ add_executable(pico_fx3u_simulator
     src/timer.c
 )
 
-# Add include directories (relative to current source dir)
+# Add include directories
 target_include_directories(pico_fx3u_simulator PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# Link libraries
+# Link required libraries
 target_link_libraries(pico_fx3u_simulator
-    pico_stdlib       # Core Pico library (includes GPIO, etc.)
-    pico_time         # Time library for sleep_ms, get_absolute_time
-    hardware_uart     # UART driver for RS485
-    hardware_gpio     # GPIO control
-    hardware_timer    # Hardware timer support
-    hardware_adc      # ADC support for analog inputs
-    hardware_pwm      # PWM support for outputs
+    pico_stdlib
+    pico_time
+    hardware_uart
+    hardware_gpio
+    hardware_timer
+    hardware_adc
+    hardware_pwm
 )
 
-# Configure stdio
-# Use USB for stdio output (printf, etc.)
+# Configure stdio (USB output for printf)
 pico_enable_stdio_usb(pico_fx3u_simulator 1)
-# Disable UART stdio to avoid conflicts with RS485
 pico_enable_stdio_uart(pico_fx3u_simulator 0)
 
-# Generate additional output formats (.uf2)
+# Add extra output targets (.uf2 file)
 pico_add_extra_outputs(pico_fx3u_simulator)

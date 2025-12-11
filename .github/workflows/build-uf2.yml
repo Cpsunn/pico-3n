@@ -60,12 +60,16 @@ jobs:
       run: |
         cd build
         echo "=== Starting Build ==="
-        make VERBOSE=1 2>&1 || {
-          echo "=== Build Failed - Showing CMakeFiles error messages ==="
-          find CMakeFiles -name "*.log" -exec cat {} \;
+        make VERBOSE=1 2>&1 | tee build.log || {
+          echo ""
+          echo "=== Build Failed - Last 150 lines of output ==="
+          tail -150 build.log
+          echo ""
+          echo "=== Searching for undefined reference errors ==="
+          grep -i "undefined reference\|error:" build.log | head -30 || true
           exit 1
         }
-        echo "=== Build Complete ==="
+        echo "=== Build Successful ==="
 
     - name: List build output
       if: always()
