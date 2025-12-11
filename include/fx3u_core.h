@@ -11,6 +11,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* 前置声明，避免头文件循环依赖 */
+struct fx3u_instruction_t;
+typedef struct fx3u_instruction_t fx3u_instruction_t;
+
 /* ===== PLC 内存映射 ===== */
 #define PLC_MAX_INPUTS      256     /* 输入继电器 X */
 #define PLC_MAX_OUTPUTS     256     /* 输出继电器 Y */
@@ -40,8 +44,8 @@
 
 /* ===== 定时器和计数器状态 ===== */
 typedef struct {
-    uint32_t current_value;
-    uint32_t preset_value;
+    uint64_t elapsed_us;
+    uint32_t preset_ms;
     bool is_running;
     bool is_done;
 } fx3u_timer_t;
@@ -74,6 +78,7 @@ typedef struct {
     plc_state_t state;
     uint32_t scan_time_ms;
     uint32_t cycle_count;
+    const fx3u_instruction_t *program;
     
     /* 继电器内存 */
     uint8_t inputs[PLC_MAX_INPUTS];
@@ -106,6 +111,10 @@ void fx3u_core_start(fx3u_core_t *plc);
 void fx3u_core_stop(fx3u_core_t *plc);
 void fx3u_core_run_cycle(fx3u_core_t *plc);
 void fx3u_core_execute_program(fx3u_core_t *plc);
+bool fx3u_core_load_program(fx3u_core_t *plc,
+                            const fx3u_instruction_t *program,
+                            uint32_t instruction_count);
+bool fx3u_core_has_program(const fx3u_core_t *plc);
 
 /* 继电器访问函数 */
 void fx3u_set_input(fx3u_core_t *plc, uint16_t addr, uint8_t value);

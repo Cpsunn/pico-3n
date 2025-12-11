@@ -10,6 +10,16 @@
 #include <stdbool.h>
 #include "fx3u_core.h"
 
+/* ===== 地址编码辅助宏 ===== */
+#define FX3U_ADDR_MASK          0x0FFF
+#define FX3U_ADDR(type, index)  ((uint16_t)(((type) << 12) | ((index) & FX3U_ADDR_MASK)))
+#define FX3U_ADDR_X(index)      FX3U_ADDR(0x0, index)
+#define FX3U_ADDR_Y(index)      FX3U_ADDR(0x1, index)
+#define FX3U_ADDR_M(index)      FX3U_ADDR(0x2, index)
+#define FX3U_ADDR_T(index)      FX3U_ADDR(0x3, index)
+#define FX3U_ADDR_C(index)      FX3U_ADDR(0x4, index)
+#define FX3U_ADDR_D(index)      FX3U_ADDR(0x5, index)
+
 /* ===== 指令操作码 ===== */
 typedef enum {
     /* 基础逻辑指令 */

@@ -25,6 +25,7 @@ add_executable(pico_fx3u_simulator
     src/main.c
     src/fx3u_core.c
     src/fx3u_instructions.c
+    src/fx3u_program.c
     src/fx3u_io.c
     src/communication.c
     src/modbus_protocol.c

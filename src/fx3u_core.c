@@ -3,9 +3,14 @@
  */
 
 #include "fx3u_core.h"
+#include "fx3u_instructions.h"
+#include "pico/time.h"
+#include <limits.h>
 #include <string.h>
 
 static fx3u_core_t *g_plc_instance = NULL;
+
+static void update_timers(fx3u_core_t *plc, uint32_t elapsed_us);
 
 /**
  * 初始化PLC核心
@@ -20,7 +25,11 @@ void fx3u_core_init(fx3u_core_t *plc)
     plc->scan_time_ms = 200;
     plc->cycle_count = 0;
     plc->program_counter = 0;
+    plc->program = NULL;
     plc->error_code = 0;
+    plc->min_scan_time_us = UINT32_MAX;
+    plc->max_scan_time_us = 0;
+    plc->last_scan_time_us = 0;
     
     /* 初始化特殊寄存器 */
     plc->registers[D8000 - 8000] = 200;   /* 扫描时间 */
@@ -28,7 +37,7 @@ void fx3u_core_init(fx3u_core_t *plc)
     plc->registers[D8002 - 8000] = 16;    /* 内存容量 16KB */
     plc->registers[D8003 - 8000] = 0x0010; /* 存储模式 */
     plc->registers[D8006 - 8000] = 0;     /* CPU错误码 */
-    plc->registers[D8010 - 8000] = 10;    /* 扫描次数 */
+    plc->registers[D8010 - 8000] = 0;    /* 扫描次数 */
     plc->registers[D8120 - 8000] = 0x4096; /* 通信方式 */
     plc->registers[D8121 - 8000] = 0;     /* 站号 */
     
@@ -60,21 +69,14 @@ void fx3u_core_run_cycle(fx3u_core_t *plc)
 {
     if (!plc || plc->state != PLC_RUN) return;
     
+    uint64_t scan_start_us = time_us_64();
     plc->cycle_count++;
     
     /* 执行用户程序 */
     fx3u_core_execute_program(plc);
     
-    /* 更新定时器 */
-    for (int i = 0; i < PLC_MAX_TIMERS; i++) {
-        if (plc->timers[i].is_running) {
-            if (plc->timers[i].current_value < plc->timers[i].preset_value) {
-                plc->timers[i].current_value++;
-            } else {
-                plc->timers[i].is_done = true;
-            }
-        }
-    }
+    uint64_t elapsed_us = time_us_64() - scan_start_us;
+    update_timers(plc, (uint32_t)elapsed_us);
     
     /* 更新计数器 */
     for (int i = 0; i < PLC_MAX_COUNTERS; i++) {
@@ -86,6 +88,21 @@ void fx3u_core_run_cycle(fx3u_core_t *plc)
             }
         }
     }
+    
+    plc->last_scan_time_us = (uint32_t)elapsed_us;
+    plc->scan_time_ms = (uint32_t)(elapsed_us / 1000);
+    
+    if (elapsed_us < plc->min_scan_time_us) {
+        plc->min_scan_time_us = elapsed_us;
+    }
+    if (elapsed_us > plc->max_scan_time_us) {
+        plc->max_scan_time_us = elapsed_us;
+    }
+    
+    plc->registers[D8000 - 8000] = (int16_t)plc->scan_time_ms;
+    plc->registers[D8010 - 8000] = (int16_t)(plc->cycle_count & 0xFFFF);
+    plc->registers[D8011 - 8000] = (int16_t)(plc->min_scan_time_us / 1000);
+    plc->registers[D8012 - 8000] = (int16_t)(plc->max_scan_time_us / 1000);
 }
 
 /**
@@ -93,10 +110,73 @@ void fx3u_core_run_cycle(fx3u_core_t *plc)
  */
 void fx3u_core_execute_program(fx3u_core_t *plc)
 {
-    if (!plc) return;
+    if (!plc || !plc->program || plc->program_size == 0) {
+        return;
+    }
     
-    /* 这里应该执行从Flash或RAM中加载的梯形图程序 */
-    /* 由于Pico的Flash大小限制，需要优化程序存储方式 */
+    for (uint32_t idx = 0; idx < plc->program_size; idx++) {
+        plc->program_counter = idx;
+        fx3u_instruction_t inst = plc->program[idx];
+        inst_result_t result = fx3u_execute_instruction(plc, &inst);
+        
+        if (result != INST_OK) {
+            fx3u_set_error(plc, 0x2000 | inst->opcode);
+            plc->state = PLC_PAUSE;
+            break;
+        }
+    }
+    
+    plc->program_counter = 0;
+}
+
+/**
+ * 加载 PLC 程序
+ */
+bool fx3u_core_load_program(fx3u_core_t *plc,
+                            const fx3u_instruction_t *program,
+                            uint32_t instruction_count)
+{
+    if (!plc || !program || instruction_count == 0) {
+        return false;
+    }
+    
+    plc->program = program;
+    plc->program_size = instruction_count;
+    plc->program_counter = 0;
+    return true;
+}
+
+/**
+ * 判断是否已加载程序
+ */
+bool fx3u_core_has_program(const fx3u_core_t *plc)
+{
+    return plc && plc->program && plc->program_size > 0;
+}
+
+static void update_timers(fx3u_core_t *plc, uint32_t elapsed_us)
+{
+    if (!plc) {
+        return;
+    }
+    
+    for (int i = 0; i < PLC_MAX_TIMERS; i++) {
+        fx3u_timer_t *timer = &plc->timers[i];
+        if (!timer->is_running || timer->is_done) {
+            continue;
+        }
+        
+        if (timer->preset_ms == 0) {
+            timer->is_done = true;
+            continue;
+        }
+        
+        timer->elapsed_us += elapsed_us;
+        uint64_t target_us = (uint64_t)timer->preset_ms * 1000ULL;
+        if (timer->elapsed_us >= target_us) {
+            timer->is_done = true;
+        }
+    }
 }
 
 /**
@@ -177,10 +257,11 @@ int16_t fx3u_get_register(fx3u_core_t *plc, uint16_t addr)
 void fx3u_timer_start(fx3u_core_t *plc, uint16_t timer_num, uint32_t preset)
 {
     if (!plc || timer_num >= PLC_MAX_TIMERS) return;
-    plc->timers[timer_num].preset_value = preset;
-    plc->timers[timer_num].current_value = 0;
-    plc->timers[timer_num].is_running = true;
-    plc->timers[timer_num].is_done = false;
+    fx3u_timer_t *timer = &plc->timers[timer_num];
+    timer->preset_ms = preset;
+    timer->elapsed_us = 0;
+    timer->is_running = true;
+    timer->is_done = false;
 }
 
 /**
@@ -189,9 +270,10 @@ void fx3u_timer_start(fx3u_core_t *plc, uint16_t timer_num, uint32_t preset)
 void fx3u_timer_stop(fx3u_core_t *plc, uint16_t timer_num)
 {
     if (!plc || timer_num >= PLC_MAX_TIMERS) return;
-    plc->timers[timer_num].is_running = false;
-    plc->timers[timer_num].current_value = 0;
-    plc->timers[timer_num].is_done = false;
+    fx3u_timer_t *timer = &plc->timers[timer_num];
+    timer->is_running = false;
+    timer->elapsed_us = 0;
+    timer->is_done = false;
 }
 
 /**
@@ -241,6 +323,9 @@ void fx3u_set_error(fx3u_core_t *plc, uint16_t error_code)
 {
     if (!plc) return;
     plc->error_code = error_code;
+    if (D8006 >= 8000) {
+        plc->registers[D8006 - 8000] = error_code;
+    }
 }
 
 /**
@@ -259,4 +344,7 @@ void fx3u_clear_error(fx3u_core_t *plc)
 {
     if (!plc) return;
     plc->error_code = 0;
+    if (D8006 >= 8000) {
+        plc->registers[D8006 - 8000] = 0;
+    }
 }

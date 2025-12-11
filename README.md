@@ -138,6 +138,17 @@ make
 - `pico_fx3u_simulator.elf` - ELF文件
 - `pico_fx3u_simulator.uf2` - UF2格式固件 (用于Pico)
 
+### GitHub Actions 自动构建
+
+项目根目录提供 `.github/workflows/build.yml`，推送或提交 PR 到 `main` 分支时，GitHub Actions 会自动：
+
+1. 安装交叉编译链和依赖
+2. 获取最新 `pico-sdk`
+3. 运行 `cmake` / `cmake --build`
+4. 作为构建产物上传 `.uf2/.bin/.elf`
+
+在仓库的 **Actions** 页面即可直接下载固件，无需本地配置环境。
+
 ### 烧录固件
 
 1. 按住Pico上的BOOTSEL按钮，连接USB到计算机

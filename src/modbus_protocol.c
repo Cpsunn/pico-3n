@@ -5,6 +5,8 @@
 #include "modbus_protocol.h"
 #include <string.h>
 
+static bool modbus_check_address(uint16_t start, uint16_t quantity, uint16_t max_count);
+
 /* CRC16查询表 */
 static const uint16_t crc16_table[256] = {
     0x0000, 0xC0C1, 0xC181, 0x0140, 0xC301, 0x03C0, 0x0280, 0xC241,
@@ -40,6 +42,18 @@ static const uint16_t crc16_table[256] = {
     0x4400, 0x84C1, 0x8581, 0x4540, 0x8701, 0x47C0, 0x4680, 0x8641,
     0x8201, 0x42C0, 0x4380, 0x8341, 0x4100, 0x81C1, 0x8081, 0x4000
 };
+
+static bool modbus_check_address(uint16_t start, uint16_t quantity, uint16_t max_count)
+{
+    if (quantity == 0) {
+        return false;
+    }
+    if (start >= max_count) {
+        return false;
+    }
+    uint32_t end = (uint32_t)start + (uint32_t)quantity;
+    return end <= max_count;
+}
 
 /**
  * 初始化MODBUS
@@ -94,7 +108,8 @@ bool modbus_validate_frame(uint8_t *buffer, uint16_t length)
     
     /* 计算CRC */
     uint16_t crc_calc = modbus_crc16(buffer, length - 2);
-    uint16_t crc_recv = ((uint16_t)buffer[length - 2] << 8) | buffer[length - 1];
+    uint16_t crc_recv = (uint16_t)buffer[length - 2] |
+                        ((uint16_t)buffer[length - 1] << 8);
     
     return crc_calc == crc_recv;
 }
@@ -117,7 +132,8 @@ bool modbus_parse_frame(uint8_t *buffer, uint16_t length, modbus_frame_t *frame)
         frame->byte_count = buffer[6];
     }
     
-    frame->crc = ((uint16_t)buffer[length - 2] << 8) | buffer[length - 1];
+    frame->crc = (uint16_t)buffer[length - 2] |
+                 ((uint16_t)buffer[length - 1] << 8);
     frame->is_valid = true;
     
     return true;
@@ -171,6 +187,13 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
     
     switch (function_code) {
         case MODBUS_READ_COIL_STATUS: {
+            if (!modbus_check_address(frame.start_address, frame.quantity,
+                                      PLC_MAX_OUTPUTS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            
             /* 读输出继电器 */
             tx_buffer[0] = rx_buffer[0];
             tx_buffer[1] = function_code;
@@ -198,6 +221,13 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
         }
         
         case MODBUS_READ_INPUT_STATUS: {
+            if (!modbus_check_address(frame.start_address, frame.quantity,
+                                      PLC_MAX_INPUTS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            
             /* 读输入继电器 */
             tx_buffer[0] = rx_buffer[0];
             tx_buffer[1] = function_code;
@@ -225,6 +255,13 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
         }
         
         case MODBUS_READ_HOLDING_REGISTERS: {
+            if (!modbus_check_address(frame.start_address, frame.quantity,
+                                      PLC_MAX_REGISTERS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            
             /* 读数据寄存器 */
             tx_buffer[0] = rx_buffer[0];
             tx_buffer[1] = function_code;
@@ -246,10 +283,54 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
             break;
         }
         
+        case MODBUS_READ_INPUT_REGISTERS: {
+            if (!modbus_check_address(frame.start_address, frame.quantity,
+                                      PLC_MAX_REGISTERS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            
+            tx_buffer[0] = rx_buffer[0];
+            tx_buffer[1] = function_code;
+            uint8_t byte_count = frame.quantity * 2;
+            tx_buffer[2] = byte_count;
+            
+            int idx = 3;
+            for (int i = 0; i < frame.quantity; i++) {
+                uint16_t addr = frame.start_address + i;
+                int16_t value = fx3u_get_register(plc, addr);
+                tx_buffer[idx++] = (value >> 8) & 0xFF;
+                tx_buffer[idx++] = value & 0xFF;
+            }
+            
+            uint16_t crc = modbus_crc16(tx_buffer, 3 + byte_count);
+            tx_buffer[idx++] = crc & 0xFF;
+            tx_buffer[idx++] = (crc >> 8) & 0xFF;
+            tx_len = idx;
+            break;
+        }
+        
         case MODBUS_WRITE_SINGLE_COIL: {
+            if (!modbus_check_address(frame.start_address, 1, PLC_MAX_OUTPUTS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            if (rx_len < 8) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_VALUE);
+                return 5;
+            }
+            
             /* 写单个输出继电器 */
-            uint8_t value = rx_buffer[4] ? 1 : 0;
-            fx3u_set_output(plc, frame.start_address, value);
+            uint16_t raw = ((uint16_t)rx_buffer[4] << 8) | rx_buffer[5];
+            if (raw != 0xFF00 && raw != 0x0000) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_VALUE);
+                return 5;
+            }
+            fx3u_set_output(plc, frame.start_address, raw == 0xFF00 ? 1 : 0);
             
             /* 回送相同的请求 */
             memcpy(tx_buffer, rx_buffer, 6);
@@ -261,6 +342,17 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
         }
         
         case MODBUS_WRITE_SINGLE_REGISTER: {
+            if (!modbus_check_address(frame.start_address, 1, PLC_MAX_REGISTERS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            if (rx_len < 8) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_VALUE);
+                return 5;
+            }
+            
             /* 写单个寄存器 */
             int16_t value = ((int16_t)rx_buffer[4] << 8) | rx_buffer[5];
             fx3u_set_register(plc, frame.start_address, value);
@@ -275,6 +367,19 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
         }
         
         case MODBUS_WRITE_MULTIPLE_COILS: {
+            if (!modbus_check_address(frame.start_address, frame.quantity,
+                                      PLC_MAX_OUTPUTS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            if (rx_len < 9 || rx_buffer[6] == 0 ||
+                rx_len != (uint16_t)(rx_buffer[6] + 9)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_VALUE);
+                return 5;
+            }
+            
             /* 写多个输出继电器 */
             uint8_t byte_count = rx_buffer[6];
             
@@ -304,6 +409,19 @@ int modbus_slave_process(fx3u_core_t *plc, uint8_t *rx_buffer, uint16_t rx_len,
         }
         
         case MODBUS_WRITE_MULTIPLE_REGISTERS: {
+            if (!modbus_check_address(frame.start_address, frame.quantity,
+                                      PLC_MAX_REGISTERS)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_ADDRESS);
+                return 5;
+            }
+            if (rx_len < 9 || rx_buffer[6] != frame.quantity * 2 ||
+                rx_len != (uint16_t)(frame.quantity * 2 + 9)) {
+                modbus_send_exception(tx_buffer, frame.slave_id, function_code,
+                                      MODBUS_EXCEPTION_INVALID_VALUE);
+                return 5;
+            }
+            
             /* 写多个寄存器 */
             uint8_t byte_count = rx_buffer[6];
             int qty = byte_count / 2;
