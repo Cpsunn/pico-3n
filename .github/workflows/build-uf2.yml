@@ -2,8 +2,7 @@ name: Build UF2
 
 on:
   workflow_dispatch: {}
-  push:
-    branches: [ main, master ]
+  workflow_call:
 
 jobs:
   build-uf2:
@@ -83,6 +82,19 @@ jobs:
           python3 "$PICO_SDK_PATH/tools/uf2/utils/elf2uf2.py" pico_fx3u_simulator.elf pico_fx3u_simulator.uf2
           echo "UF2 generated via Python script"
         fi
+        if [ ! -f pico_fx3u_simulator.uf2 ]; then
+          echo "ERROR: pico_fx3u_simulator.uf2 not generated"
+          ls -lh
+          exit 1
+        fi
+        if [ ! -f pico_fx3u_simulator.bin ] && [ -f pico_fx3u_simulator.elf ]; then
+          arm-none-eabi-objcopy -O binary pico_fx3u_simulator.elf pico_fx3u_simulator.bin
+          echo "Binary image generated via objcopy"
+        fi
+        mkdir -p ../artifacts
+        cp pico_fx3u_simulator.uf2 pico_fx3u_simulator.elf ../artifacts/
+        [ -f pico_fx3u_simulator.bin ] && cp pico_fx3u_simulator.bin ../artifacts/
+        [ -f pico_fx3u_simulator.hex ] && cp pico_fx3u_simulator.hex ../artifacts/
         # List all generated files
         echo ""
         echo "Files in build directory:"
@@ -109,11 +121,9 @@ jobs:
       with:
         name: firmware
         path: |
-          build/pico_fx3u_simulator.uf2
-          build/pico_fx3u_simulator.elf
-          build/pico_fx3u_simulator.hex
-          build/pico_fx3u_simulator.bin
-          **/*.uf2
-          **/*.elf
+          artifacts/pico_fx3u_simulator.uf2
+          artifacts/pico_fx3u_simulator.elf
+          artifacts/pico_fx3u_simulator.bin
+          artifacts/pico_fx3u_simulator.hex
         if-no-files-found: warn
         retention-days: 30

@@ -8,49 +8,5 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake git pkg-config libusb-1.0-0-dev gcc-arm-none-eabi libnewlib-arm-none-eabi
-
-      - name: Fetch Pico SDK
-        run: |
-          if [ ! -d pico-sdk ]; then
-            git clone --depth 1 https://github.com/raspberrypi/pico-sdk.git pico-sdk
-          fi
-          cd pico-sdk
-          git submodule update --init --recursive --depth 1 || true
-
-      - name: Export PICO_SDK_PATH
-        run: |
-          echo "PICO_SDK_PATH=${{ github.workspace }}/pico-sdk" >> $GITHUB_ENV
-          echo "PICO_SDK_PATH is ${GITHUB_WORKSPACE}/pico-sdk"
-
-      - name: Configure CMake
-        env:
-          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
-        run: |
-          mkdir -p build
-          cd build
-          cmake .. -DPICO_SDK_PATH="${PICO_SDK_PATH}" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON
-
-      - name: Build firmware
-        run: |
-          cd build
-          make -j$(nproc)
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: pico_fx3u_simulator
-          path: |
-            build/pico_fx3u_simulator.uf2
-            build/pico_fx3u_simulator.bin
-            build/pico_fx3u_simulator.elf
+    uses: ./.github/workflows/build-uf2.yml
+    secrets: inherit
