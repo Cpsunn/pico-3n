@@ -70,6 +70,23 @@ jobs:
           exit 1
         }
         echo "=== Build Successful ==="
+        
+    - name: Generate UF2
+      if: success()
+      run: |
+        cd build
+        echo "=== Generating UF2 File ==="
+        # Check if elf2uf2 tool exists
+        which elf2uf2 && elf2uf2 pico_fx3u_simulator.elf pico_fx3u_simulator.uf2 && echo "UF2 generated via elf2uf2" || true
+        # Also check in pico-sdk
+        if [ -f "$PICO_SDK_PATH/tools/uf2/utils/elf2uf2.py" ]; then
+          python3 "$PICO_SDK_PATH/tools/uf2/utils/elf2uf2.py" pico_fx3u_simulator.elf pico_fx3u_simulator.uf2
+          echo "UF2 generated via Python script"
+        fi
+        # List all generated files
+        echo ""
+        echo "Files in build directory:"
+        ls -lh pico_fx3u_simulator.* || echo "No pico_fx3u_simulator files found"
 
     - name: List build output
       if: always()
