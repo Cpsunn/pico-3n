@@ -75,7 +75,6 @@ jobs:
       run: |
         cd build
         echo "=== Ensuring UF2/BIN artifacts exist ==="
-        cmake --build . --target pico_fx3u_simulator.uf2
         ELF_FILE=./pico_fx3u_simulator.elf
         UF2_FILE=./pico_fx3u_simulator.uf2
         if [ ! -f "$ELF_FILE" ]; then
