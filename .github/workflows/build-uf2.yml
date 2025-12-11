@@ -1,0 +1,53 @@
+name: Build UF2
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-uf2:
+    name: Build UF2 on Ubuntu
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake git libusb-1.0-0-dev gcc-arm-none-eabi libnewlib-arm-none-eabi
+
+    - name: Clone pico-sdk if missing
+      run: |
+        if [ ! -d pico-sdk ]; then git clone https://github.com/raspberrypi/pico-sdk.git pico-sdk; fi
+        cd pico-sdk
+        git submodule update --init --recursive || true
+
+    - name: Configure CMake
+      run: |
+        mkdir -p build
+        cd build
+        cmake .. -DPICO_SDK_PATH="${{ github.workspace }}/pico-sdk" -DCMAKE_BUILD_TYPE=Release
+
+    - name: Build
+      run: |
+        cd build
+        make -j$(nproc)
+
+    - name: List build output and find UF2
+      run: |
+        cd build
+        echo "Listing build artifacts:"
+        ls -la || true
+        echo "Searching for .uf2 files:"
+        find . -type f -name "*.uf2" -print || true
+
+    - name: Upload UF2 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: uf2-artifacts
+        path: build/**/*.uf2
