@@ -83,9 +83,22 @@ jobs:
           exit 1
         fi
         if [ ! -f "$UF2_FILE" ]; then
-          echo "ERROR: Expected UF2 file ${UF2_FILE} not found"
-          ls -lh
-          exit 1
+          echo "UF2 missing, attempting to build elf2uf2 tool..."
+          ELF2UF2_BIN=$(command -v elf2uf2 || true)
+          if [ -z "$ELF2UF2_BIN" ] && [ -d "_deps/picotool-build" ]; then
+            cmake --build _deps/picotool-build --target elf2uf2
+            ELF2UF2_BIN=$(find _deps/picotool-build -name elf2uf2 -type f -executable | head -n 1)
+          fi
+          if [ -z "$ELF2UF2_BIN" ] && [ -d "$PICO_SDK_PATH" ]; then
+            ELF2UF2_BIN=$(find "$PICO_SDK_PATH" -name elf2uf2 -type f -executable | head -n 1)
+          fi
+          if [ -z "$ELF2UF2_BIN" ]; then
+            echo "ERROR: Unable to locate elf2uf2 tool to generate UF2."
+            ls -lh
+            exit 1
+          fi
+          echo "Using elf2uf2 at ${ELF2UF2_BIN}"
+          "$ELF2UF2_BIN" "$ELF_FILE" "$UF2_FILE"
         fi
         if [ ! -f pico_fx3u_simulator.bin ]; then
           echo "Generating BIN image via objcopy..."
