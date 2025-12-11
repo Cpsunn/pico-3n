@@ -18,7 +18,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake git pkg-config libusb-1.0-0-dev gcc-arm-none-eabi libnewlib-arm-none-eabi
+        sudo apt-get install -y build-essential cmake git pkg-config libusb-1.0-0-dev ninja-build gcc-arm-none-eabi libnewlib-arm-none-eabi
 
     - name: Check environment
       run: |
@@ -48,7 +48,7 @@ jobs:
         echo "=== Configuring CMake ==="
         echo "PICO_SDK_PATH is: $PICO_SDK_PATH"
         ls -la "$PICO_SDK_PATH" || echo "PICO_SDK_PATH not accessible!"
-        cmake .. \
+        cmake .. -G Ninja \
           -DPICO_SDK_PATH="${PICO_SDK_PATH}" \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_VERBOSE_MAKEFILE=ON \
@@ -58,14 +58,11 @@ jobs:
     - name: Build
       run: |
         cd build
-        echo "=== Starting Build ==="
-        make VERBOSE=1 2>&1 | tee build.log || {
+        echo "=== Starting Build (Ninja) ==="
+        cmake --build . -- -v || {
           echo ""
-          echo "=== Build Failed - Last 150 lines of output ==="
-          tail -150 build.log
-          echo ""
-          echo "=== Searching for undefined reference errors ==="
-          grep -i "undefined reference\|error:" build.log | head -30 || true
+          echo "=== Build Failed - Showing ninja log ==="
+          cat .ninja_log || true
           exit 1
         }
         echo "=== Build Successful ==="
