@@ -74,25 +74,36 @@ jobs:
       if: success()
       run: |
         cd build
-        echo "=== Generating UF2 File ==="
-        # Check if elf2uf2 tool exists
-        which elf2uf2 && elf2uf2 pico_fx3u_simulator.elf pico_fx3u_simulator.uf2 && echo "UF2 generated via elf2uf2" || true
-        # Also check in pico-sdk
-        if [ -f "$PICO_SDK_PATH/tools/uf2/utils/elf2uf2.py" ]; then
-          python3 "$PICO_SDK_PATH/tools/uf2/utils/elf2uf2.py" pico_fx3u_simulator.elf pico_fx3u_simulator.uf2
-          echo "UF2 generated via Python script"
-        fi
-        if [ ! -f pico_fx3u_simulator.uf2 ]; then
-          echo "ERROR: pico_fx3u_simulator.uf2 not generated"
+        echo "=== Ensuring UF2/BIN artifacts exist ==="
+        ELF_FILE=$(find . -maxdepth 1 -name "*.elf" | head -n 1)
+        if [ -z "$ELF_FILE" ]; then
+          echo "ERROR: ELF file not found after build"
           ls -lh
           exit 1
         fi
-        if [ ! -f pico_fx3u_simulator.bin ] && [ -f pico_fx3u_simulator.elf ]; then
-          arm-none-eabi-objcopy -O binary pico_fx3u_simulator.elf pico_fx3u_simulator.bin
-          echo "Binary image generated via objcopy"
+
+        UF2_FILE=$(find . -maxdepth 1 -name "*.uf2" | head -n 1)
+        if [ -z "$UF2_FILE" ]; then
+          echo "UF2 not generated automatically, searching for elf2uf2 tool..."
+          ELF2UF2_BIN=$(find .. -path "*elf2uf2/elf2uf2" -type f -executable | head -n 1)
+          if [ -n "$ELF2UF2_BIN" ]; then
+            "$ELF2UF2_BIN" "$ELF_FILE" pico_fx3u_simulator.uf2
+            UF2_FILE=./pico_fx3u_simulator.uf2
+            echo "UF2 generated via $ELF2UF2_BIN"
+          else
+            echo "ERROR: Unable to locate elf2uf2 tool."
+            exit 1
+          }
         fi
+
+        if [ ! -f pico_fx3u_simulator.bin ]; then
+          echo "Generating BIN image via objcopy..."
+          arm-none-eabi-objcopy -O binary "$ELF_FILE" pico_fx3u_simulator.bin
+        fi
+
         mkdir -p ../artifacts
-        cp pico_fx3u_simulator.uf2 pico_fx3u_simulator.elf ../artifacts/
+        cp "$UF2_FILE" ../artifacts/pico_fx3u_simulator.uf2
+        cp "$ELF_FILE" ../artifacts/pico_fx3u_simulator.elf
         [ -f pico_fx3u_simulator.bin ] && cp pico_fx3u_simulator.bin ../artifacts/
         [ -f pico_fx3u_simulator.hex ] && cp pico_fx3u_simulator.hex ../artifacts/
         # List all generated files
