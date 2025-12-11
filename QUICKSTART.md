@@ -1,52 +1,166 @@
-# Pico FX3U 模拟器 - 快速开始指南
+# 快速开始指南 - Pico FX3U 模拟器
 
-## 5分钟快速入门
+## ✅ 项目状态
 
-### 第1步: 准备环境
+- **固件编译**: ✅ 成功
+- **UF2 文件**: ✅ 已生成
+- **GitHub 仓库**: https://github.com/Cpsunn/pico-3n
+- **CI/CD 状态**: ✅ 自动构建中
+
+## 5 分钟快速入门
+
+### 第 1 步: 获取固件
+
+**方式 A: 从 GitHub Actions 下载（推荐）**
+
+1. 打开 https://github.com/Cpsunn/pico-3n/actions/workflows/build-uf2.yml
+2. 找到最新的 ✅ 成功的 workflow run
+3. 向下滚动到 "Artifacts" 部分
+4. 下载 "firmware" ZIP 文件
+5. 解压，找到 `pico_fx3u_simulator.uf2`
+
+**方式 B: 本地编译**
 
 ```bash
-# 1. 克隆或下载本项目
-# 2. 确保已安装Pico SDK
-export PICO_SDK_PATH=~/pico-sdk
-
-# 3. 进入项目目录
-cd pico-fx3u-simulator
-```
-
-### 第2步: 编译
-
-```bash
-# 创建构建目录
-mkdir -p build
-cd build
-
-# 配置和编译
+# 前提: 已安装 cmake, arm-none-eabi-gcc, Pico SDK
+export PICO_SDK_PATH=~/pico/pico-sdk
+mkdir -p build && cd build
 cmake ..
 make -j4
-
-# 检查构建输出
-ls -la *.uf2
+# 输出文件: pico_fx3u_simulator.uf2
 ```
 
-### 第3步: 烧录
+### 第 2 步: 烧录到 Pico
+
+**准备 Pico:**
+1. 按住 **BOOTSEL** 按钮
+2. 连接 USB 到电脑（保持按住 BOOTSEL）
+3. 释放按钮 → Pico 应显示为 `RPI-RP2` 驱动器
+
+**复制文件:**
 
 ```bash
-# 方法1: 直接复制 (macOS/Linux)
+# macOS
 cp pico_fx3u_simulator.uf2 /Volumes/RPI-RP2/
 
-# 方法2: 使用picotool
-picotool load pico_fx3u_simulator.elf
+# Linux
+cp pico_fx3u_simulator.uf2 /mnt/rpi-rp2/
 
-# 方法3: 手动拖放
-# - 按住BOOTSEL键并连接USB
-# - 将.uf2文件拖到出现的驱动器
+# Windows: 使用文件浏览器拖放到 RPI-RP2 驱动器
 ```
 
-### 第4步: 测试
+**等待重启:**
+- 文件复制完成后 Pico 自动重启
+- 应看到 GPIO2 (RUN LED) 亮起 ✅
+
+### 第 3 步: 验证
+
+连接串口终端查看启动信息：
 
 ```bash
-# 连接USB并打开串口监控
-minicom -D /dev/ttyACM0 -b 115200
+# macOS
+screen /dev/tty.usbmodem14101 115200
+
+# Linux  
+screen /dev/ttyACM0 115200
+```
+
+**预期输出:**
+```
+=== Pico FX3U Simulator v1.0 ===
+Initializing PLC core...
+Initializing I/O manager...
+Initializing RS485 communication...
+...
+PLC Status: Ready
+```
+
+### 第 4 步: 测试命令
+
+在串口终端中输入：
+
+```
+d   # 诊断信息
+s   # 系统状态
+m   # 内存使用
+r   # 复位 PLC
+```
+
+## 常见问题
+
+### Q: 找不到 UF2 文件？
+
+**A:** 确保选择了 ✅ 成功（绿色）的构建，不是 ❌ 失败的构建。最新的应该是 Run #11 或更新版本。
+
+### Q: Pico 无法进入 Bootloader 模式？
+
+**A:** 
+- 检查是否正确按住 BOOTSEL 按钮
+- 尝试不同的 USB 线或 USB 端口
+- 详见 [FLASHING.md](FLASHING.md)
+
+### Q: 烧录后无输出？
+
+**A:**
+- 检查 LED：RUN LED 应亮，ERR LED 应灭
+- 检查串口设置：波特率 115200，数据位 8，停止位 1
+- 尝试命令 `d` 获取诊断信息
+
+## 项目配置
+
+### 硬件映射
+
+```
+GPIO0-1    → UART TX/RX（RS485 通信）
+GPIO2      → RUN LED（绿色）
+GPIO3      → ERR LED（红色）
+GPIO4-5    → Y0-Y1（数字输出）
+GPIO6-15   → X0-X9（数字输入）
+GPIO16-22  → Y2-Y8（数字输出）
+GPIO23     → RUN 开关（去抖）
+GPIO24-25  → RS485 DE/RE（驱动控制）
+GPIO26-28  → AI0-AI2（模拟输入）
+```
+
+详细映射见 [IO_PIN_CONFIGURATION_REPORT.md](IO_PIN_CONFIGURATION_REPORT.md)
+
+### 通信配置
+
+- **协议**: MODBUS RTU
+- **波特率**: 9600 bps
+- **数据格式**: 8N1（8 位数据, 无校验, 1 停止位）
+- **模式**: 从机（地址 1）
+
+## 文档导航
+
+| 文档 | 内容 |
+|------|------|
+| [README.md](README.md) | 项目完整说明 |
+| [FLASHING.md](FLASHING.md) | 详细烧录指南 |
+| [IO_PIN_CONFIGURATION_REPORT.md](IO_PIN_CONFIGURATION_REPORT.md) | 硬件引脚详情 |
+| [API.md](API.md) | API 函数文档 |
+| [BUILD.md](BUILD.md) | 构建系统说明 |
+
+## 下一步
+
+1. ✅ 下载 UF2 文件并烧录（本指南完成）
+2. 🔧 通过串口连接验证运行
+3. 📡 测试 RS485/MODBUS 通信（如需要）
+4. 🎯 根据需要定制功能
+
+## 反馈和支持
+
+- 📖 查阅详细文档了解更多
+- 🐛 遇到问题参考 [FLASHING.md](FLASHING.md) 故障排除
+- 💡 需要修改功能查看源代码注释
+
+---
+
+**状态**: ✅ 构建成功  
+**版本**: 1.0 (Pico SDK)  
+**最后更新**: 2025-12-11
+
+
 
 # 在终端输入:
 # s - 启动PLC
