@@ -31,12 +31,15 @@ target_include_directories(pico_fx3u_simulator PRIVATE
 target_link_libraries(pico_fx3u_simulator
     pico_stdlib
     pico_runtime
+    pico_time
     hardware_uart
     hardware_gpio
     hardware_timer
     hardware_dma
     hardware_spi
     hardware_i2c
+    hardware_adc
+    hardware_pwm
 )
 
 pico_enable_stdio_usb(pico_fx3u_simulator 1)
