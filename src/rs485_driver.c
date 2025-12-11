@@ -3,13 +3,10 @@
  */
 
 #include "rs485_driver.h"
+#include "fx3u_io.h"
 #include "pico/stdlib.h"
 #include "hardware/uart.h"
 #include "hardware/gpio.h"
-
-#define RS485_RTS_PIN   22
-#define RS485_TX_PIN    21
-#define RS485_RX_PIN    20
 
 /**
  * 初始化RS485接口
@@ -19,14 +16,8 @@ void rs485_init(rs485_config_t *config)
     if (!config) return;
     
     uart_init(uart0, config->baudrate);
-    gpio_set_function(RS485_RX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(RS485_TX_PIN, GPIO_FUNC_UART);
-    
-    /* 初始化RTS控制引脚 */
-    gpio_init(RS485_RTS_PIN);
-    gpio_set_dir(RS485_RTS_PIN, GPIO_OUT);
-    gpio_put(RS485_RTS_PIN, 0);  /* 初始为接收模式 */
-    
+    gpio_set_function(PICO_UART_RX_GPIO, GPIO_FUNC_UART);
+    gpio_set_function(PICO_UART_TX_GPIO, GPIO_FUNC_UART);
     uart_set_hw_flow(uart0, false, false);
 }
 
@@ -35,7 +26,8 @@ void rs485_init(rs485_config_t *config)
  */
 void rs485_set_receive_mode(void)
 {
-    gpio_put(RS485_RTS_PIN, 0);  /* RTS低 = 接收 */
+    io_rs485_set_de(false);  /* 驱动禁用 */
+    io_rs485_set_re(true);   /* 接收使能 */
 }
 
 /**
@@ -43,7 +35,8 @@ void rs485_set_receive_mode(void)
  */
 void rs485_set_transmit_mode(void)
 {
-    gpio_put(RS485_RTS_PIN, 1);  /* RTS高 = 发送 */
+    io_rs485_set_re(false);  /* 接收禁用 */
+    io_rs485_set_de(true);   /* 驱动使能 */
 }
 
 /**

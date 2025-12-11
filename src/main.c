@@ -3,7 +3,9 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "hardware/uart.h"
 #include "fx3u_core.h"
 #include "fx3u_instructions.h"
