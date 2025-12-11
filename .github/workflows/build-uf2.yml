@@ -19,35 +19,58 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential cmake git libusb-1.0-0-dev gcc-arm-none-eabi libnewlib-arm-none-eabi
+        sudo apt-get install -y build-essential cmake git pkg-config libusb-1.0-0-dev gcc-arm-none-eabi libnewlib-arm-none-eabi
 
-    - name: Clone pico-sdk if missing
+    - name: Check environment
       run: |
-        if [ ! -d pico-sdk ]; then git clone https://github.com/raspberrypi/pico-sdk.git pico-sdk; fi
-        cd pico-sdk
-        git submodule update --init --recursive || true
+        echo "=== Environment Check ==="
+        which arm-none-eabi-gcc && arm-none-eabi-gcc --version
+        cmake --version
+        ls -la pico-sdk || echo "pico-sdk not found in workspace"
 
-    - name: Configure CMake
+    - name: Clone pico-sdk
+      run: |
+        if [ ! -d pico-sdk ]; then
+          echo "Cloning pico-sdk..."
+          git clone --depth 1 https://github.com/raspberrypi/pico-sdk.git pico-sdk
+        fi
+        cd pico-sdk
+        git submodule update --init --recursive --depth 1 || true
+
+    - name: Set PICO_SDK_PATH
+      run: |
+        echo "PICO_SDK_PATH=$(pwd)/pico-sdk" >> $GITHUB_ENV
+        echo "PICO_SDK_PATH is now: $(pwd)/pico-sdk"
+
+    - name: Create and configure build directory
       run: |
         mkdir -p build
         cd build
-        cmake .. -DPICO_SDK_PATH="${{ github.workspace }}/pico-sdk" -DCMAKE_BUILD_TYPE=Release
+        echo "=== Configuring CMake ==="
+        cmake .. -DPICO_SDK_PATH="${{ env.PICO_SDK_PATH }}" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON
+        echo "=== CMake Configuration Complete ==="
 
     - name: Build
       run: |
         cd build
-        make -j$(nproc)
+        echo "=== Starting Build ==="
+        make -j$(nproc) VERBOSE=1
+        echo "=== Build Complete ==="
 
-    - name: List build output and find UF2
+    - name: List build output
+      if: always()
       run: |
-        cd build
-        echo "Listing build artifacts:"
-        ls -la || true
-        echo "Searching for .uf2 files:"
-        find . -type f -name "*.uf2" -print || true
+        echo "=== Build Directory Contents ==="
+        ls -la build/ || true
+        echo "=== Searching for UF2 files ==="
+        find . -type f -name "*.uf2" -exec ls -lh {} \; || true
+        echo "=== Searching for ELF files ==="
+        find . -type f -name "*.elf" -exec ls -lh {} \; || true
 
     - name: Upload UF2 artifacts
+      if: success()
       uses: actions/upload-artifact@v4
       with:
         name: uf2-artifacts
         path: build/**/*.uf2
+        if-no-files-found: warn
