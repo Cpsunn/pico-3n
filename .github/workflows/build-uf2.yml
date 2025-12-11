@@ -74,17 +74,25 @@ jobs:
     - name: List build output
       if: always()
       run: |
-        echo "=== Build Directory Contents ==="
-        ls -la build/ || true
+        echo "=== Build Directory Structure ==="
+        find build -type f -ls 2>/dev/null | head -50 || echo "No build directory found"
+        echo ""
+        echo "=== All Files in Build ==="
+        ls -laR build 2>/dev/null || echo "No build directory found"
+        echo ""
         echo "=== Searching for UF2 files ==="
-        find . -type f -name "*.uf2" -exec ls -lh {} \; || true
+        find . -name "*.uf2" -type f 2>/dev/null || echo "No UF2 files found"
+        echo ""
         echo "=== Searching for ELF files ==="
-        find . -type f -name "*.elf" -exec ls -lh {} \; || true
+        find . -name "*.elf" -type f 2>/dev/null || echo "No ELF files found"
 
     - name: Upload UF2 artifacts
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: uf2-artifacts
-        path: build/**/*.uf2
+        path: |
+          build/pico_fx3u_simulator.uf2
+          build/**/*.uf2
+          build/*.elf
         if-no-files-found: warn
