@@ -75,39 +75,19 @@ jobs:
       run: |
         cd build
         echo "=== Ensuring UF2/BIN artifacts exist ==="
-        ELF_FILE=$(find . -name "pico_fx3u_simulator*.elf" -print | sort | head -n 1)
-        if [ -z "$ELF_FILE" ]; then
-          echo "ERROR: ELF file not found after build"
+        cmake --build . --target pico_fx3u_simulator.uf2
+        ELF_FILE=./pico_fx3u_simulator.elf
+        UF2_FILE=./pico_fx3u_simulator.uf2
+        if [ ! -f "$ELF_FILE" ]; then
+          echo "ERROR: Expected ELF file ${ELF_FILE} not found"
           ls -lh
           exit 1
         fi
-        echo "ELF file located at: $ELF_FILE"
-
-        UF2_FILE=$(find . -name "pico_fx3u_simulator*.uf2" -print | sort | head -n 1)
-        if [ -z "$UF2_FILE" ]; then
-          echo "UF2 not generated automatically, building elf2uf2 tool..."
-          ELF2UF2_BIN=$(command -v elf2uf2 || true)
-          if [ -z "$ELF2UF2_BIN" ]; then
-            ELF2UF2_BIN=$(find "${GITHUB_WORKSPACE}/build" -path "*elf2uf2/elf2uf2" -type f -executable | head -n 1)
-          fi
-          if [ -z "$ELF2UF2_BIN" ] && [ -d "${GITHUB_WORKSPACE}/build/_deps/picotool-build" ]; then
-            cmake --build "${GITHUB_WORKSPACE}/build/_deps/picotool-build" --target elf2uf2
-            ELF2UF2_BIN=$(find "${GITHUB_WORKSPACE}/build/_deps/picotool-build" -name elf2uf2 -type f -executable | head -n 1)
-          fi
-          if [ -z "$ELF2UF2_BIN" ] && [ -d "$PICO_SDK_PATH" ]; then
-            ELF2UF2_BIN=$(find "$PICO_SDK_PATH" -name elf2uf2 -type f -executable | head -n 1)
-          fi
-          if [ -z "$ELF2UF2_BIN" ]; then
-            echo "ERROR: Unable to locate elf2uf2 tool."
-            exit 1
-          fi
-          echo "Using elf2uf2 located at: $ELF2UF2_BIN"
-          "$ELF2UF2_BIN" "$ELF_FILE" pico_fx3u_simulator.uf2
-          UF2_FILE=./pico_fx3u_simulator.uf2
-          echo "UF2 generated via $ELF2UF2_BIN"
+        if [ ! -f "$UF2_FILE" ]; then
+          echo "ERROR: Expected UF2 file ${UF2_FILE} not found"
+          ls -lh
+          exit 1
         fi
-        echo "UF2 file located at: $UF2_FILE"
-
         if [ ! -f pico_fx3u_simulator.bin ]; then
           echo "Generating BIN image via objcopy..."
           arm-none-eabi-objcopy -O binary "$ELF_FILE" pico_fx3u_simulator.bin
