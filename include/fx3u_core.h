@@ -13,7 +13,6 @@
 
 /* 前置声明，避免头文件循环依赖 */
 struct fx3u_instruction_t;
-typedef struct fx3u_instruction_t fx3u_instruction_t;
 
 /* ===== PLC 内存映射 ===== */
 #define PLC_MAX_INPUTS      256     /* 输入继电器 X */

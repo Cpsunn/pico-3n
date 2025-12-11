@@ -27,6 +27,7 @@
 #include "hardware/pwm.h"
 #include "hardware/adc.h"
 #include "pico/time.h"
+#include <stdio.h>
 #include <string.h>
 
 static io_manager_t *g_io_mgr = NULL;
@@ -370,7 +371,7 @@ void io_enable_pwm(uint8_t gpio_num, uint16_t frequency_hz, uint8_t duty_percent
     }
     
     pwm_config_set_wrap(&config, period - 1);
-    pwm_init(slice_num, &config);
+    pwm_init(slice_num, &config, true);
     
     uint16_t level = (uint32_t)(period * duty_percent) / 100;
     pwm_set_gpio_level(gpio_num, level);
@@ -402,7 +403,7 @@ void io_manager_update(void)
 {
     if (!g_io_mgr || !g_io_mgr->initialized) return;
     
-    uint32_t now = to_ms_since_boot();
+    uint32_t now = to_ms_since_boot(get_absolute_time());
     
     /* 扫描数字输入并去抖动 */
     uint8_t input_gpios[] = {
