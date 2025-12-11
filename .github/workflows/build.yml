@@ -9,27 +9,42 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential
+          sudo apt-get install -y build-essential cmake git pkg-config libusb-1.0-0-dev gcc-arm-none-eabi libnewlib-arm-none-eabi
 
       - name: Fetch Pico SDK
         run: |
-          git clone --depth=1 https://github.com/raspberrypi/pico-sdk.git "${PICO_SDK_PATH}"
-          (cd "${PICO_SDK_PATH}" && git submodule update --init)
+          if [ ! -d pico-sdk ]; then
+            git clone --depth 1 https://github.com/raspberrypi/pico-sdk.git pico-sdk
+          fi
+          cd pico-sdk
+          git submodule update --init --recursive --depth 1 || true
+
+      - name: Export PICO_SDK_PATH
+        run: |
+          echo "PICO_SDK_PATH=${{ github.workspace }}/pico-sdk" >> $GITHUB_ENV
+          echo "PICO_SDK_PATH is ${GITHUB_WORKSPACE}/pico-sdk"
 
       - name: Configure CMake
-        run: cmake -B build -S .
+        env:
+          PICO_SDK_PATH: ${{ github.workspace }}/pico-sdk
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DPICO_SDK_PATH="${PICO_SDK_PATH}" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=ON
 
       - name: Build firmware
-        run: cmake --build build --config Release
+        run: |
+          cd build
+          make -j$(nproc)
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
