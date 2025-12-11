@@ -91,25 +91,29 @@ jobs:
     - name: List build output
       if: always()
       run: |
-        echo "=== Build Directory Structure ==="
-        find build -type f -ls 2>/dev/null | head -50 || echo "No build directory found"
+        echo "=== Current Working Directory ==="
+        pwd
         echo ""
-        echo "=== All Files in Build ==="
-        ls -laR build 2>/dev/null || echo "No build directory found"
+        echo "=== Complete Recursion of Build Directory ==="
+        find build -type f 2>/dev/null | sort || echo "Build directory not found"
         echo ""
-        echo "=== Searching for UF2 files ==="
-        find . -name "*.uf2" -type f 2>/dev/null || echo "No UF2 files found"
+        echo "=== File Details ==="
+        find build -type f -exec file {} \; 2>/dev/null | head -50 || true
         echo ""
-        echo "=== Searching for ELF files ==="
-        find . -name "*.elf" -type f 2>/dev/null || echo "No ELF files found"
+        echo "=== Check for UF2/ELF/BIN Files Explicitly ==="
+        find . \( -name "*.uf2" -o -name "*.elf" -o -name "*.bin" \) -type f 2>/dev/null | sort || echo "No UF2/ELF/BIN files found in entire workspace"
 
     - name: Upload UF2 artifacts
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: uf2-artifacts
+        name: firmware
         path: |
           build/pico_fx3u_simulator.uf2
-          build/**/*.uf2
-          build/*.elf
+          build/pico_fx3u_simulator.elf
+          build/pico_fx3u_simulator.hex
+          build/pico_fx3u_simulator.bin
+          **/*.uf2
+          **/*.elf
         if-no-files-found: warn
+        retention-days: 30
