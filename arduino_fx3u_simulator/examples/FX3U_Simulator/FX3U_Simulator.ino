@@ -1,6 +1,9 @@
 #include <Arduino.h>
 
+#ifdef __cplusplus
 extern "C" {
+#endif
+
 #include "pico/stdlib.h"
 #include "pico/time.h"
 #include "hardware/uart.h"
@@ -12,10 +15,11 @@ extern "C" {
 #include "rs485_driver.h"
 #include "timer.h"
 #include "fx3u_program.h"
-}
 
-extern "C" bool stdio_usb_connected(void);
-extern "C" int getchar_timeout_us(uint32_t timeout_us);
+#ifdef __cplusplus
+}
+#endif
+
 
 static fx3u_core_t g_plc;
 static comm_config_t g_comm_config;
